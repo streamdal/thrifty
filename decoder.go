@@ -17,11 +17,11 @@ import (
 	"go.uber.org/thriftrw/idl"
 )
 
-// ParsedIDL is a convenience struct that holds AST representations of Thrift structs
-// and mappings of const and enum types.
+// ParsedIDL is a convenience struct that holds AST representations of Thrift structs and mappings of enum types
 type ParsedIDL struct {
-	Structs map[string]*ast.Struct
-	Enums   map[string]map[int32]string
+	Structs  map[string]*ast.Struct
+	Enums    map[string]map[int32]string
+	Typedefs map[string]struct{}
 }
 
 // DecodeWithParsedIDL decodes a thrift message into JSON format using an IDL abstract syntax tree.
@@ -63,8 +63,9 @@ func DecodeWithRawIDL(idlDefinition []byte, thriftMsg []byte, structName string)
 // of all thrift structs, and a mapping of enum int->string values. All other Thrift IDL
 func ParseIDL(data []byte) (*ParsedIDL, error) {
 	parsedIDL := &ParsedIDL{
-		Structs: make(map[string]*ast.Struct),
-		Enums:   make(map[string]map[int32]string),
+		Structs:  make(map[string]*ast.Struct),
+		Enums:    make(map[string]map[int32]string),
+		Typedefs: make(map[string]struct{}),
 	}
 
 	parsed, err := idl.Parse(data)
@@ -73,12 +74,6 @@ func ParseIDL(data []byte) (*ParsedIDL, error) {
 	}
 
 	for _, def := range parsed.Definitions {
-		constant, ok := def.(*ast.Constant)
-		if ok {
-			// TODO: handle constants
-			_ = constant
-		}
-
 		enums, ok := def.(*ast.Enum)
 		if ok {
 			parsedIDL.Enums[enums.Name] = make(map[int32]string)
@@ -92,6 +87,12 @@ func ParseIDL(data []byte) (*ParsedIDL, error) {
 			}
 		}
 
+		typedef, ok := def.(*ast.Typedef)
+		if ok {
+			// We just need to know that the typedef exists. It gets treated like any other base type
+			parsedIDL.Typedefs[typedef.Name] = struct{}{}
+		}
+
 		msg, ok := def.(*ast.Struct)
 		if !ok {
 			// Ignore non structs
@@ -99,6 +100,9 @@ func ParseIDL(data []byte) (*ParsedIDL, error) {
 		}
 
 		parsedIDL.Structs[msg.Name] = msg
+
+		// NOTE: constants are handled by generated code on the producer side,
+		// so it's not necessary to handle in this lib
 	}
 
 	return parsedIDL, nil
@@ -127,7 +131,7 @@ func structToMap(idl *ParsedIDL, rootMsgName string, decoded *general.Struct) (m
 	for _, field := range rootMsg.Fields {
 		// Non-base type
 		if _, ok := field.Type.(ast.TypeReference); ok {
-			// Check if field is a constant or enum
+			// Check if field is an enum
 			enums, ok := idl.Enums[field.Type.String()]
 			if ok {
 				enumID, ok := decoded.Get(protocol.FieldId(field.ID)).(int32)
@@ -137,6 +141,13 @@ func structToMap(idl *ParsedIDL, rootMsgName string, decoded *general.Struct) (m
 
 				jsonMap[field.Name] = enums[enumID]
 
+				continue
+			}
+
+			// Check if field is a custom type definition
+			if _, ok := idl.Typedefs[field.Type.String()]; ok {
+				// Custom type definition. Don't need to do anything, just treat like a normal field
+				jsonMap[field.Name] = decoded.Get(protocol.FieldId(field.ID))
 				continue
 			}
 
