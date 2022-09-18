@@ -21,7 +21,7 @@ idlFiles := map[string][]byte{
               3: string last_name
               4: string email
             }
-        `)
+        `),
 }
 
 
@@ -35,7 +35,7 @@ Then decode the binary message data. The struct name must be prefixed with the f
  `"sh.batch.schema.Account"` as shown: 
 
 ```go
-decodedMsg, err := thrify.DecodeWithParsedIDL(idlFiles, msgData, "sh.batch.schema.Account")
+decodedMsg, err := thrify.DecodeWithParsedIDL(idl, msgData, "sh.batch.schema.Account")
 if err != nil {
 	log.Fatalf("unable to decode thrift message: %s", err.Error())
 }
