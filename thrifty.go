@@ -1,5 +1,5 @@
 // Package thrifty is used to transform a wire-format thrift message into a JSON representation
-// using an IDL definition. This library builds upon github.com/thrift-iterator/go by utilizing
+// using an IDL definition. This library builds upon github.com/batchcorp/thrift-iterator by utilizing
 // the IDL definition in order to properly represent field names and enum values in the output
 // instead of IDs.
 package thrifty
@@ -10,11 +10,12 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
-	thrifter "github.com/thrift-iterator/go"
-	"github.com/thrift-iterator/go/general"
-	"github.com/thrift-iterator/go/protocol"
 	"go.uber.org/thriftrw/ast"
 	"go.uber.org/thriftrw/idl"
+
+	thrifter "github.com/batchcorp/thrift-iterator"
+	"github.com/batchcorp/thrift-iterator/general"
+	"github.com/batchcorp/thrift-iterator/protocol"
 )
 
 // ParsedIDL is a convenience struct that holds AST representations of Thrift structs and mappings of enum types
