@@ -34,7 +34,7 @@ func DecodeWithParsedIDL(idlFiles map[string]*ParsedIDL, thriftMsg []byte, struc
 		return nil, err
 	}
 
-	structName, structNamespace, err := getMessageAndNS(structPath)
+	structName, structNamespace, err := parseStructName(structPath)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +246,7 @@ func findStruct(idl *ParsedIDL, structName string) (*ast.Struct, error) {
 
 		msg, ok := idl.Structs[parts[1]]
 		if !ok {
-			return nil, fmt.Errorf("unable to find message '%s' in file '%s'", parts[1], parts[0]+".thrift")
+			return nil, fmt.Errorf("unable to find struct '%s' in file '%s'", parts[1], parts[0]+".thrift")
 		}
 
 		return msg, nil
@@ -255,16 +255,16 @@ func findStruct(idl *ParsedIDL, structName string) (*ast.Struct, error) {
 	// No file name, just look up using passed structName
 	msg, ok := idl.Structs[structName]
 	if !ok {
-		return nil, fmt.Errorf("unable to find message '%s' in namespace '%s'", structName, idl.Namespace)
+		return nil, fmt.Errorf("unable to find struct '%s' in namespace '%s'", structName, idl.Namespace)
 	}
 
 	return msg, nil
 }
 
-func getMessageAndNS(in string) (string, string, error) {
+func parseStructName(in string) (string, string, error) {
 	parts := strings.Split(in, ".")
 	if len(parts) < 2 {
-		return "", "", fmt.Errorf("'%s' must contain a nameapace", in)
+		return "", "", fmt.Errorf("'%s' must contain a namespace", in)
 	}
 
 	return parts[len(parts)-1], strings.Join(parts[0:len(parts)-1], "."), nil
