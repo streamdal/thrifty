@@ -12,7 +12,7 @@ First parse the IDL:
 
 ```go
 idlFiles := map[string][]byte{
-	"my.thrift": []byte(`
+	"simple.thrift": []byte(`
             namespace go sh.batch.schema
             
             struct Account {
@@ -31,7 +31,7 @@ if err != nil {
 }
 ```
 
-Then decode the binary message data. The struct name must be prefixed with the full namespace
+Then decode the binary message data using the parsed IDL. The struct name must be prefixed with the full namespace
  `"sh.batch.schema.Account"` as shown: 
 
 ```go
@@ -50,4 +50,74 @@ println(string(decodedMsg))
 Output:
 ```json
 {"first_name": "Gopher", "last_name": "Golang", "email": "gopher@golang.org", "id": 348590795}
+```
+
+
+## Benchmarks
+
+Single struct: 
+```
+struct Account {
+  1: i32 id
+  2: string first_name
+  3: string last_name
+  4: string email
+}
+```
+
+```bash
+goos: darwin
+goarch: arm64
+pkg: github.com/batchcorp/thrifty
+BenchmarkParseIDL-8              	  192861	      6335 ns/op
+BenchmarkDecodeWithParsedIDL-8   	  974961	      1129 ns/op
+BenchmarkDecodeWithRawIDL-8      	  154863	      7734 ns/op
+```
+
+Multiple nested structs:
+```
+struct Account {
+  1: i32 id
+  2: string first_name
+  3: string last_name
+  4: string email
+  5: Billing billing
+  6: Address address
+  7: Deep1 deep_nested
+}
+
+struct Billing {
+  1: string card_number
+  2: i32 exp_month
+  3: i32 exp_year
+}
+
+struct Address {
+  1: string street
+  2: string city
+  3: string state_province
+  4: string country
+  5: string postal_code
+}
+
+struct Deep1 {
+  1: Deep2 deep2
+}
+
+struct Deep2 {
+  1: Deep3 deep3
+}
+
+struct Deep3 {
+  1: string nested_value
+}
+```
+
+```bash
+goos: darwin
+goarch: arm64
+pkg: github.com/batchcorp/thrifty
+BenchmarkParseIDL_nested-8              	   51993	     23102 ns/op
+BenchmarkDecodeWithParsedIDL_nested-8   	  271761	      4448 ns/op
+BenchmarkDecodeWithRawIDL_nested-8      	  133392	      8918 ns/op
 ```

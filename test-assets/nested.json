@@ -1,0 +1,25 @@
+{
+  "email": "gopher@golang.org",
+  "billing": {
+    "card_number": "4556390318707358",
+    "exp_month": 9,
+    "exp_year": 2022
+  },
+  "address": {
+    "street": "1600 Amphitheatre Parkway",
+    "city": "Mountain View",
+    "state_province": "CA",
+    "country": "US",
+    "postal_code": "94043"
+  },
+  "deep_nested": {
+    "deep2": {
+      "deep3": {
+        "nested_value": "Hello!"
+      }
+    }
+  },
+  "id": 348590795,
+  "first_name": "Gopher",
+  "last_name": "Golang"
+}

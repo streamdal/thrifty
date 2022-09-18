@@ -1,6 +1,9 @@
 package thrifty
 
 import (
+	"os"
+	"testing"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -22,40 +25,8 @@ var _ = Describe("Thrifty", func() {
 	})
 
 	Context("ParseIDL", func() {
-		It("Parses a single file", func() {
-			data := []byte(`namespace go sh.batch.schema
-
-include "somefile.thrift"
-
-struct SubMessage {
-    1: string value
-}
-
-enum ClientType {
-  UNSET = 0,
-  VIP = 1
-}
-
-union Thing {
-  1: string thing_string
-  2: i32 thing_int
-}
-
-const i32 INT_CONST = 1234;
-
-typedef double USD
-
-struct Customer {
-  1: i32 key
-  2: string value
-  3: SubMessage subm
-  4: map<i32, i32> newmap
-  5: list<string> newlist
-  6: ClientType client_type = ClientType.VIP
-  7: Thing unionthing
-  8: USD monthly_price
-  9: i32 testconst = INT_CONST
-}`)
+		It("Parses a definition", func() {
+			data, err := os.ReadFile("./test-assets/complex.thrift")
 
 			idl, err := ParseIDL(data)
 
@@ -68,4 +39,119 @@ struct Customer {
 			Expect(idl.Namespace).To(Equal("sh.batch.schema"))
 		})
 	})
+
+	Context("DecodeWithParsedIDL", func() {
+		It("decodes a simple message into JSON", func() {
+			msgData, err := os.ReadFile("./test-assets/simple.bin")
+			Expect(err).ToNot(HaveOccurred())
+
+			idlData, err := os.ReadFile("./test-assets/simple.thrift")
+			Expect(err).ToNot(HaveOccurred())
+
+			idl, err := ParseIDLFiles(map[string][]byte{"simple.thrift": idlData})
+			Expect(err).ToNot(HaveOccurred())
+
+			decoded, err := DecodeWithParsedIDL(idl, msgData, "sh.batch.schema.Account")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(decoded).To(MatchJSON(`{"id": 348590795, "first_name": "Gopher", "last_name": "Golang", "email": "gopher@golang.org"}`))
+		})
+
+		It("decodes a nested message into JSON", func() {
+			expected, err := os.ReadFile("./test-assets/nested.json")
+			Expect(err).ToNot(HaveOccurred())
+
+			msgData, err := os.ReadFile("./test-assets/nested.bin")
+			Expect(err).ToNot(HaveOccurred())
+
+			idlData, err := os.ReadFile("./test-assets/nested.thrift")
+			Expect(err).ToNot(HaveOccurred())
+
+			idl, err := ParseIDLFiles(map[string][]byte{"nested.thrift": idlData})
+			Expect(err).ToNot(HaveOccurred())
+
+			decoded, err := DecodeWithParsedIDL(idl, msgData, "sh.batch.schema.Account")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(decoded).To(MatchJSON(expected))
+		})
+	})
 })
+
+func BenchmarkParseIDL_simple(b *testing.B) {
+	idlData, err := os.ReadFile("./test-assets/simple.thrift")
+	Expect(err).ToNot(HaveOccurred())
+
+	idlFiles := map[string][]byte{"simple.thrift": idlData}
+
+	for n := 0; n < b.N; n++ {
+		ParseIDLFiles(idlFiles)
+	}
+}
+
+func BenchmarkDecodeWithParsedIDL_simple(b *testing.B) {
+	msgData, err := os.ReadFile("./test-assets/simple.bin")
+	Expect(err).ToNot(HaveOccurred())
+
+	idlData, err := os.ReadFile("./test-assets/simple.thrift")
+	Expect(err).ToNot(HaveOccurred())
+
+	idl, err := ParseIDLFiles(map[string][]byte{"simple.thrift": idlData})
+	Expect(err).ToNot(HaveOccurred())
+
+	for n := 0; n < b.N; n++ {
+		DecodeWithParsedIDL(idl, msgData, "sh.batch.schema.Account")
+	}
+}
+
+func BenchmarkDecodeWithRawIDL_simple(b *testing.B) {
+	msgData, err := os.ReadFile("./test-assets/simple.bin")
+	Expect(err).ToNot(HaveOccurred())
+
+	idlData, err := os.ReadFile("./test-assets/simple.thrift")
+	Expect(err).ToNot(HaveOccurred())
+
+	idlFiles := map[string][]byte{"simple.thrift": idlData}
+
+	for n := 0; n < b.N; n++ {
+		DecodeWithRawIDL(idlFiles, msgData, "sh.batch.schema.Account")
+	}
+}
+
+func BenchmarkParseIDL_nested(b *testing.B) {
+	idlData, err := os.ReadFile("./test-assets/nested.thrift")
+	Expect(err).ToNot(HaveOccurred())
+
+	idlFiles := map[string][]byte{"nested.thrift": idlData}
+
+	for n := 0; n < b.N; n++ {
+		ParseIDLFiles(idlFiles)
+	}
+}
+
+func BenchmarkDecodeWithParsedIDL_nested(b *testing.B) {
+	msgData, err := os.ReadFile("./test-assets/nested.bin")
+	Expect(err).ToNot(HaveOccurred())
+
+	idlData, err := os.ReadFile("./test-assets/nested.thrift")
+	Expect(err).ToNot(HaveOccurred())
+
+	idl, err := ParseIDLFiles(map[string][]byte{"nested.thrift": idlData})
+	Expect(err).ToNot(HaveOccurred())
+
+	for n := 0; n < b.N; n++ {
+		DecodeWithParsedIDL(idl, msgData, "sh.batch.schema.Account")
+	}
+}
+
+func BenchmarkDecodeWithRawIDL_nested(b *testing.B) {
+	msgData, err := os.ReadFile("./test-assets/nested.bin")
+	Expect(err).ToNot(HaveOccurred())
+
+	idlData, err := os.ReadFile("./test-assets/simple.thrift")
+	Expect(err).ToNot(HaveOccurred())
+
+	idlFiles := map[string][]byte{"simple.thrift": idlData}
+
+	for n := 0; n < b.N; n++ {
+		DecodeWithRawIDL(idlFiles, msgData, "sh.batch.schema.Account")
+	}
+}
