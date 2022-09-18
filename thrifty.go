@@ -167,11 +167,16 @@ func ParseIDL(data []byte) (*ParsedIDL, error) {
 	return parsedIDL, nil
 }
 
-func decodeWireFormat(message []byte) (*general.Struct, error) {
-	obj := &general.Struct{}
+func decodeWireFormat(message []byte) (obj *general.Struct, err error) {
+	// This is ugly, unfortunately thrift-iterator has panics
+	// On benchmarks, this only added <100ns per op
+	defer func() {
+		if pErr := recover(); pErr != nil {
+			err = fmt.Errorf("decodeWireFormat panicked: %s", pErr)
+		}
+	}()
 
-	err := thrifter.Unmarshal(message, obj)
-	if err != nil {
+	if err := thrifter.Unmarshal(message, &obj); err != nil {
 		return nil, errors.Wrap(err, "unable to read thrift message")
 	}
 
