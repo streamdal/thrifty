@@ -6,7 +6,7 @@ package thrifty
 
 import (
 	"fmt"
-	"log"
+	"strings"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
@@ -19,21 +19,29 @@ import (
 
 // ParsedIDL is a convenience struct that holds AST representations of Thrift structs and mappings of enum types
 type ParsedIDL struct {
-	Structs  map[string]*ast.Struct
-	Enums    map[string]map[int32]string
-	Typedefs map[string]struct{}
+	Namespace string
+	Structs   map[string]*ast.Struct
+	Enums     map[string]map[int32]string
+	Typedefs  map[string]struct{}
 }
 
 // DecodeWithParsedIDL decodes a thrift message into JSON format using an IDL abstract syntax tree.
 // It is recommended to use this method instead of DecodeWithRawIDL if you have multiple messages to
 // decode using the same IDL. Before calling this method, you must parse the IDL definition using ParseIDL
-func DecodeWithParsedIDL(idl *ParsedIDL, thriftMsg []byte, structName string) ([]byte, error) {
+func DecodeWithParsedIDL(idlFiles map[string]*ParsedIDL, thriftMsg []byte, structPath string) ([]byte, error) {
 	decoded, err := decodeWireFormat(thriftMsg)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := structToMap(idl, structName, decoded)
+	structName, structNamespace, err := getMessageAndNS(structPath)
+	if err != nil {
+		return nil, err
+	}
+
+	namespaceMsgs := idlFiles[structNamespace]
+
+	result, err := structToMap(namespaceMsgs, structName, decoded)
 	if err != nil {
 		return nil, err
 	}
@@ -47,11 +55,11 @@ func DecodeWithParsedIDL(idl *ParsedIDL, thriftMsg []byte, structName string) ([
 	return js, nil
 }
 
-// DecodeWithRawIDL decodes a thrift message with the provided IDL definition and root message name
+// DecodeWithRawIDL decodes a thrift message with the provided IDL definition and struct name
 // It is recommended to use DecodeWithParsedIDL() instead to avoid the overhead of having to parse the IDL
-// into an AST on every call. This method is here for convenience purposes
-func DecodeWithRawIDL(idlDefinition []byte, thriftMsg []byte, structName string) ([]byte, error) {
-	idl, err := ParseIDL(idlDefinition)
+// into an AST on every decode. This method is here for convenience purposes.
+func DecodeWithRawIDL(idlDefinition map[string][]byte, thriftMsg []byte, structName string) ([]byte, error) {
+	idl, err := ParseIDLFiles(idlDefinition)
 	if err != nil {
 		return nil, err
 	}
@@ -59,18 +67,69 @@ func DecodeWithRawIDL(idlDefinition []byte, thriftMsg []byte, structName string)
 	return DecodeWithParsedIDL(idl, thriftMsg, structName)
 }
 
+// ParseIDLFiles receives a map of the contents of .thrift IDL files, with the key being the file name
+// and returns a map of parsed IDL files with the map key being the namespace.
+func ParseIDLFiles(idlFiles map[string][]byte) (map[string]*ParsedIDL, error) {
+	ret := make(map[string]*ParsedIDL)
+
+	for path, contents := range idlFiles {
+		idl, err := ParseIDL(contents)
+		if err != nil {
+			return nil, errors.Wrapf(err, "unable to parse IDL file '%s'", path)
+		}
+
+		ns, ok := ret[idl.Namespace]
+		if !ok {
+			// Namespace definition hasn't been seen before, just set
+			ret[idl.Namespace] = idl
+			continue
+		}
+
+		// Merge maps into existing namespace definition
+		for k, _ := range idl.Typedefs {
+			ns.Typedefs[k] = struct{}{}
+		}
+
+		for k, v := range idl.Structs {
+			ns.Structs[k] = v
+		}
+
+		for k, v := range idl.Enums {
+			ns.Enums[k] = v
+		}
+
+	}
+
+	return ret, nil
+}
+
 // ParseIDL takes an IDL definition and returns a ParsedIDL struct containing AST representations
 // of all thrift structs, and a mapping of enum int->string values. All other Thrift IDL
 func ParseIDL(data []byte) (*ParsedIDL, error) {
 	parsedIDL := &ParsedIDL{
-		Structs:  make(map[string]*ast.Struct),
-		Enums:    make(map[string]map[int32]string),
-		Typedefs: make(map[string]struct{}),
+		Namespace: "default",
+		Structs:   make(map[string]*ast.Struct),
+		Enums:     make(map[string]map[int32]string),
+		Typedefs:  make(map[string]struct{}),
 	}
 
 	parsed, err := idl.Parse(data)
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to parse IDL")
+	}
+
+	// Find the namespace. This will read only the first one as there can be multiple.
+	// We might need to require the end-user to specify a "go" scoped namespace in order
+	// to choose the namespace reliably. Ex: "namespace go sh.batch.users".
+	// Or possibly require a "batch" scoped namespace.
+	for _, head := range parsed.Headers {
+		ns, ok := head.(*ast.Namespace)
+		if !ok {
+			continue
+		}
+
+		parsedIDL.Namespace = ns.Name
+		break
 	}
 
 	for _, def := range parsed.Definitions {
@@ -119,16 +178,15 @@ func decodeWireFormat(message []byte) (*general.Struct, error) {
 	return obj, nil
 }
 
-func structToMap(idl *ParsedIDL, rootMsgName string, decoded *general.Struct) (map[string]interface{}, error) {
+func structToMap(idl *ParsedIDL, structName string, decoded *general.Struct) (map[string]interface{}, error) {
 	jsonMap := make(map[string]interface{})
 
-	rootMsg, ok := idl.Structs[rootMsgName]
-	if !ok {
-		log.Printf("message '%s' not found in IDL", rootMsgName)
-		return jsonMap, nil
+	curStruct, err := findStruct(idl, structName)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, field := range rootMsg.Fields {
+	for _, field := range curStruct.Fields {
 		// Non-base type
 		if _, ok := field.Type.(ast.TypeReference); ok {
 			// Check if field is an enum
@@ -136,7 +194,7 @@ func structToMap(idl *ParsedIDL, rootMsgName string, decoded *general.Struct) (m
 			if ok {
 				enumID, ok := decoded.Get(protocol.FieldId(field.ID)).(int32)
 				if !ok {
-					return nil, fmt.Errorf("could not type assert ID for field '%s' to int32", field.Name)
+					return nil, fmt.Errorf("BUG: could not type assert ID for field '%s' to int32", field.Name)
 				}
 
 				jsonMap[field.Name] = enums[enumID]
@@ -174,4 +232,40 @@ func structToMap(idl *ParsedIDL, rootMsgName string, decoded *general.Struct) (m
 	}
 
 	return jsonMap, nil
+}
+
+func findStruct(idl *ParsedIDL, structName string) (*ast.Struct, error) {
+	// Looking for struct based on an included file. The struct's name is prefixed with the file's name, minus extension
+	if strings.Contains(structName, ".") {
+		// Included message, split out file name and lookup via just the
+		// struct name since we're grouping all structs by namespace
+		parts := strings.Split(structName, ".")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("unable to handle path '%s'", structName)
+		}
+
+		msg, ok := idl.Structs[parts[1]]
+		if !ok {
+			return nil, fmt.Errorf("unable to find message '%s' in file '%s'", parts[1], parts[0]+".thrift")
+		}
+
+		return msg, nil
+	}
+
+	// No file name, just look up using passed structName
+	msg, ok := idl.Structs[structName]
+	if !ok {
+		return nil, fmt.Errorf("unable to find message '%s' in namespace '%s'", structName, idl.Namespace)
+	}
+
+	return msg, nil
+}
+
+func getMessageAndNS(in string) (string, string, error) {
+	parts := strings.Split(in, ".")
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("'%s' must contain a nameapace", in)
+	}
+
+	return parts[len(parts)-1], strings.Join(parts[0:len(parts)-1], "."), nil
 }
