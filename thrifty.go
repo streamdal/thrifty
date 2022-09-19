@@ -40,7 +40,10 @@ func DecodeWithParsedIDL(idlFiles map[string]*ParsedIDL, thriftMsg []byte, struc
 		return nil, err
 	}
 
-	namespaceMsgs := idlFiles[structNamespace]
+	namespaceMsgs, ok := idlFiles[structNamespace]
+	if !ok {
+		return nil, fmt.Errorf("namespace '%s' not found in thrift IDL", structNamespace)
+	}
 
 	result, err := structToMap(namespaceMsgs, structName, decoded)
 	if err != nil {
