@@ -71,6 +71,20 @@ func DecodeWithRawIDL(idlDefinition map[string][]byte, thriftMsg []byte, structN
 	return DecodeWithParsedIDL(idl, thriftMsg, structName)
 }
 
+func DecodeWithoutIDL(thriftMsg []byte) ([]byte, error) {
+	decoded, err := decodeWireFormat(thriftMsg)
+	if err != nil {
+		return nil, err
+	}
+
+	// jsoniter is needed to marshal map[interface{}]interface{} types
+	js, err := jsoniter.Marshal(decoded)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to marshal thrift message to json")
+	}
+	return js, nil
+}
+
 // ParseIDLFiles receives a map of the contents of .thrift IDL files, with the key being the file name
 // and returns a map of parsed IDL files with the map key being the namespace.
 func ParseIDLFiles(idlFiles map[string][]byte) (map[string]*ParsedIDL, error) {
