@@ -146,10 +146,10 @@ func BenchmarkDecodeWithRawIDL_nested(b *testing.B) {
 	msgData, err := os.ReadFile("./test-assets/nested.bin")
 	Expect(err).ToNot(HaveOccurred())
 
-	idlData, err := os.ReadFile("./test-assets/simple.thrift")
+	idlData, err := os.ReadFile("./test-assets/nested.thrift")
 	Expect(err).ToNot(HaveOccurred())
 
-	idlFiles := map[string][]byte{"simple.thrift": idlData}
+	idlFiles := map[string][]byte{"nested.thrift": idlData}
 
 	for n := 0; n < b.N; n++ {
 		DecodeWithRawIDL(idlFiles, msgData, "sh.batch.schema.Account")

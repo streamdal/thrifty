@@ -117,7 +117,7 @@ struct Deep3 {
 goos: darwin
 goarch: arm64
 pkg: github.com/batchcorp/thrifty
-BenchmarkParseIDL_nested-8              	   51993	     23102 ns/op
-BenchmarkDecodeWithParsedIDL_nested-8   	  271761	      4448 ns/op
-BenchmarkDecodeWithRawIDL_nested-8      	  133392	      8918 ns/op
+BenchmarkParseIDL_nested-8              	   51273	     23310 ns/op
+BenchmarkDecodeWithParsedIDL_nested-8   	  261242	      4602 ns/op
+BenchmarkDecodeWithRawIDL_nested-8      	   39578	     28945 ns/op
 ```
